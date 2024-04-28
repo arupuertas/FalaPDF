@@ -20,6 +20,13 @@ def get_pdf_text(pdf_docs):
             text += page.extract_text()
     return text
 
+def get_vectorstore(text_chunks):
+    embeddings = OpenAIEmbeddings()
+    #embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
+    #embeddings = HuggingFaceInstructEmbeddings(model_name="bigscience/bloom-560m")
+    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
+    return vectorstore
+
 def get_text_chunks(text):
     text_splitter = CharacterTextSplitter(
         separator = "\n",
@@ -30,17 +37,9 @@ def get_text_chunks(text):
     chunks = text_splitter.split_text(text)
     return chunks
 
-def get_vectorstore(text_chunks):
-    #embeddings = OpenAIEmbeddings()
-    #embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
-    embeddings = HuggingFaceInstructEmbeddings(model_name="bigscience/bloom-560m")
-    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
-    return vectorstore
-
 def get_conversation_chain(vectorstore):
     llm = ChatOpenAI()
     #llm = HuggingFaceHub(repo_id="google/flan-t5-xxl", model_kwargs={"temperature":0.5, "max_length":512})
-
     memory = ConversationBufferMemory(memory_key='chat_history', return_messages=True)
     conversation_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
@@ -50,9 +49,9 @@ def get_conversation_chain(vectorstore):
     return conversation_chain
 
 def handle_userinput(user_question):
+    #lidando com a resposta do usuario
     response = st.session_state.conversation({'question':user_question})
     st.session_state.chat_history = response['chat_history']
-    
     for i, message in enumerate(st.session_state.chat_history):
         if i % 2 == 0:
             st.write(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
@@ -63,9 +62,7 @@ def handle_userinput(user_question):
 def main():
     load_dotenv()
     st.set_page_config(page_title="Fala PDF", page_icon='🗣️')
-
     st.write(css, unsafe_allow_html=True)
-
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
@@ -101,8 +98,6 @@ def main():
                 # Reconhece o áudio capturado
                 text = recognizer.recognize_google(audio, language="pt-BR")
                 text = text.lower()
-                # st.write(f"Texto reconhecido: {text}")
-                # Substitui o texto reconhecido na barra de pesquisa
                 st.session_state.user_question = text
             except sr.UnknownValueError:
                 st.write("Não foi possível reconhecer a pergunta.")
@@ -121,19 +116,13 @@ def main():
         pdf_docs = st.file_uploader("Faça o upload dos seus PDF's aqui e clique em 'Processar'", accept_multiple_files=True)
         if st.button("Processar"):
             with st.spinner("Processando"):
-                
-                # get pdf text
+                #pegando o texto do pdf
                 raw_text = get_pdf_text(pdf_docs)
-                # st.write(raw_text)
-                
-                # get the text chunks
+                # pegando os chunks
                 text_chunks = get_text_chunks(raw_text)
-                # st.write(text_chunks)
-                
-                # create vector store
+                # vetorizando
                 vectorstore = get_vectorstore(text_chunks)
-
-                # create conversation chain
+                # criando a conversa
                 st.session_state.conversation = get_conversation_chain(vectorstore)
 
 
